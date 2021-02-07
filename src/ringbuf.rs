@@ -13,6 +13,8 @@ pub enum Error {
     BufTooSmall,
     #[error("Buffer too big")]
     BufTooBig,
+    #[error("Buffer unaligned")]
+    BufUnaligned,
     #[error("Buffer corrupt or uninitialized")]
     BufCorrupt,
     #[error("Callback read more items than existed in the buffer")]
@@ -78,22 +80,23 @@ impl<T> Buf<T> {
         use Error::*;
         if length < CACHE_LINE_SIZE + size_of::<T>() { Err(BufTooSmall)? }
         if length >= isize::MAX as usize { Err(BufTooBig)? }
-        let count_ptr = data as *mut _ as *const AtomicUsize;
         let r = Self {
-            count_ptr,
+            count_ptr: data as *mut _ as *const AtomicUsize,
             data: data.offset(CACHE_LINE_SIZE as isize) as _,
             length: (length - CACHE_LINE_SIZE) / size_of::<T>(),
         };
+        if (r.count_ptr as usize) % std::mem::align_of::<AtomicUsize>() != 0 { Err(BufUnaligned)? }
+        if (r.data as usize) % std::mem::align_of::<T>() != 0 { Err(BufUnaligned)? }
         if init {
             r.count().store(0, Ordering::Release);
         } else {
-            if r.count().load(Ordering::Acquire) > length { Err(BufCorrupt)? }
+            r.load_count()?;
         }
         Ok(r)
     }
 }
 
-impl<T: zerocopy::AsBytes> Sender<T> {
+impl<T: zerocopy::AsBytes + Copy> Sender<T> {
 
     /// Assume a ringbuf is set up at the location.
     ///
@@ -169,7 +172,7 @@ impl<T: zerocopy::AsBytes> Sender<T> {
     pub fn write_count(&self) -> Result<usize, Error> { Ok(self.buf.length - self.buf.load_count()?) }
 }
 
-impl<T: zerocopy::FromBytes> Receiver<T> {
+impl<T: zerocopy::FromBytes + Copy> Receiver<T> {
     /// Returns (remaining items, was full)
     /// The second item is true if the buffer was full but was read from
     /// (this can be used to signal remote side that more data can be written).
