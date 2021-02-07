@@ -148,7 +148,7 @@ impl<T: zerocopy::AsBytes + Copy> Sender<T> {
     }
 
     /// "Safe" version of send. Will call your closure up to "count" times
-    /// and depend on RVO to avoid memory copies.
+    /// and depend on optimisation to avoid memory copies.
     ///
     /// # Panics
     ///
@@ -173,10 +173,11 @@ impl<T: zerocopy::AsBytes + Copy> Sender<T> {
 }
 
 impl<T: zerocopy::FromBytes + Copy> Receiver<T> {
-    /// Returns (remaining items, was full)
-    /// The second item is true if the buffer was full but was read from
-    /// (this can be used to signal remote side that more data can be written).
-    /// f: This closure returns number of items that can be dropped from buffer.
+    /// Lowest level receive function
+    ///
+    /// The closure will be called with a pointer to the first item and the number of items,
+    /// and should return the number of items that can be dropped from the buffer.
+    ///
     /// Since this is a ringbuffer, there might be more items to read even if you
     /// read it all during the closure.
     pub fn recv<F: FnOnce(*const T, usize) -> usize>(&mut self, f: F) -> Result<Status, Error> {
@@ -202,8 +203,6 @@ impl<T: zerocopy::FromBytes + Copy> Receiver<T> {
 
     /// "Safe" version of recv. Will call your closure up to "count" times
     /// and depend on optimisation to avoid memory copies.
-    ///
-    /// Returns (free items, was empty) like send does
     ///
     /// # Panics
     ///

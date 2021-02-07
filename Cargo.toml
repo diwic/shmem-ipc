@@ -1,5 +1,5 @@
 [package]
-name = "memfd-ipc"
+name = "shmem-ipc"
 version = "0.1.0"
 authors = ["David Henningsson <coding@diwic.se>"]
 edition = "2018"

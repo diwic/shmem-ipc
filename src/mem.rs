@@ -50,6 +50,24 @@ pub fn raw_memfd(memfd: &mfd::Memfd) -> Result<mmap::MmapRaw, Error> {
     Ok(r)
 }
 
+/// Creates a shared memory area that can be written once and read many times.
+///
+/// The memfd is created, memory mapped and the closure can fill in the data.
+/// After the data is filled in, the memfd is sealed to be read only.
+///
+/// # Example
+/// ```rust
+/// use memfd_ipc::mem::{oneshot, read_memfd};
+/// // Create a 4 MB memory area
+/// let memfd = oneshot(1024*1024*4, "write_then_read_test", |x| {
+///      // Fill it with data
+///      for (i, j) in x.iter_mut().enumerate() { *j = i as u8; }
+/// }).unwrap();
+///  /* ... send the memfd to another process somehow ... */
+/// let map = read_memfd(&memfd).unwrap();
+/// // Read the data
+/// for (i, j) in map.iter().enumerate() { assert_eq!(i as u8, *j); }
+/// ```
 pub fn oneshot<F: FnOnce(&mut[u8])>(size: u64, name: &str, f: F) -> Result<mfd::Memfd, Error> {
     let opts = memfd::MemfdOptions::new().allow_sealing(true).close_on_exec(true);
     let mut h = mfd::SealsHashSet::new();
@@ -61,6 +79,7 @@ pub fn oneshot<F: FnOnce(&mut[u8])>(size: u64, name: &str, f: F) -> Result<mfd::
     oneshot_custom(size, name, opts, &h, f)
 }
 
+/// Like "oneshot", but allows for customisation of the memfd_options and seals added after writing.
 pub fn oneshot_custom<F: FnOnce(&mut[u8])>(size: u64, name: &str, memfd_options: memfd::MemfdOptions, seals: &mfd::SealsHashSet, f: F) -> Result<mfd::Memfd, Error> {
     let memfd = memfd_options.create(name)?;
     // Sets the memory to zeroes.
