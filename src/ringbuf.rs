@@ -41,6 +41,14 @@ pub struct Receiver<T> {
     index: usize,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct Status {
+    /// Number of remaining items that can be immediately read/written
+    pub remaining: usize,
+    /// True if we should signal the remote side to wake up
+    pub signal: bool,
+}
+
 const CACHE_LINE_SIZE: usize = 64;
 
 /// Use this utility function to figure out how big buffer you need to allocate.
@@ -112,7 +120,7 @@ impl<T: zerocopy::AsBytes> Sender<T> {
     ///
     /// Since this is a ringbuffer, there might be more items to write even if you
     /// completely fill up during the closure.
-    pub fn send<F: FnOnce(*mut T, usize) -> usize>(&mut self, f: F) -> Result<(usize, bool), Error> {
+    pub fn send<F: FnOnce(*mut T, usize) -> usize>(&mut self, f: F) -> Result<Status, Error> {
         let cb = self.buf.load_count()?;
         let l = self.buf.length;
 
@@ -130,26 +138,31 @@ impl<T: zerocopy::AsBytes> Sender<T> {
         let c = self.buf.count().fetch_add(n, Ordering::AcqRel);
         self.index = (self.index + n) % l;
         // dbg!("Send: cb = {}, c = {}, l = {}, n = {}", cb, c, l, n);
-        Ok((l - c - n, c == 0 && n > 0))
+        Ok(Status {
+            remaining: l - c - n,
+            signal: c == 0 && n > 0
+        })
     }
 
     /// "Safe" version of send. Will call your closure up to "count" times
     /// and depend on RVO to avoid memory copies.
     ///
-    /// Returns (free items, was empty) like send does
-    ///
     /// # Panics
     ///
     /// Panics in case the buffer is corrupt.
-    pub fn send_foreach<F: FnMut() -> T>(&mut self, count: usize, mut f: F) -> (usize, bool) {
-        let mut i = 0;
-        self.send(|p, c| {
-            while i < c && i < count {
-                unsafe { ptr::write(p.offset(i as isize), f()) };
-                i += 1;
-            };
-            i
-        }).unwrap()
+    pub fn send_foreach<F: FnMut() -> T>(&mut self, mut count: usize, mut f: F) -> Status {
+        loop {
+            let status = self.send(|p, c| {
+                let mut j = 0;
+                while j < c && count > 0 {
+                    unsafe { ptr::write(p.offset(j as isize), f()) };
+                    j += 1;
+                    count -= 1;
+                };
+                j
+            }).unwrap();
+            if status.remaining == 0 || count == 0 { return status; }
+        }
     }
 
     /// Returns number of items that can be written
@@ -163,7 +176,7 @@ impl<T: zerocopy::FromBytes> Receiver<T> {
     /// f: This closure returns number of items that can be dropped from buffer.
     /// Since this is a ringbuffer, there might be more items to read even if you
     /// read it all during the closure.
-    pub fn recv<F: FnOnce(*const T, usize) -> usize>(&mut self, f: F) -> Result<(usize, bool), Error> {
+    pub fn recv<F: FnOnce(*const T, usize) -> usize>(&mut self, f: F) -> Result<Status, Error> {
         let cb = self.buf.load_count()?;
         let l = self.buf.length;
         let n = {
@@ -178,7 +191,10 @@ impl<T: zerocopy::FromBytes> Receiver<T> {
         let c = self.buf.count().fetch_sub(n, Ordering::AcqRel);
         self.index = (self.index + n) % l;
         // dbg!("Recv: cb = {}, c = {}, l = {}, n = {}", cb, c, l, n);
-        return Ok((c - n, c >= l && n > 0))
+        return Ok(Status {
+            remaining: c - n,
+            signal: c >= l && n > 0,
+        })
     }
 
     /// "Safe" version of recv. Will call your closure up to "count" times
@@ -189,15 +205,19 @@ impl<T: zerocopy::FromBytes> Receiver<T> {
     /// # Panics
     ///
     /// Panics in case the buffer is corrupt.
-    pub fn recv_foreach<F: FnMut(T)>(&mut self, count: usize, mut f: F) -> (usize, bool) {
-        self.recv(|p, c| {
-            let mut i = 0;
-            while i < c && i < count {
-                f(unsafe { ptr::read(p.offset(i as isize)) });
-                i += 1;
-            };
-            i
-        }).unwrap()
+    pub fn recv_foreach<F: FnMut(T)>(&mut self, mut count: usize, mut f: F) -> Status {
+        loop {
+            let status = self.recv(|p, c| {
+                let mut j = 0;
+                while j < c && count > 0 {
+                    f(unsafe { ptr::read(p.offset(j as isize)) });
+                    count -= 1;
+                    j += 1;
+                };
+                j
+            }).unwrap();
+            if status.remaining == 0 || count == 0 { return status; }
+        }
     }
 
 
