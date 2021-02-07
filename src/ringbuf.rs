@@ -6,6 +6,21 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::mem::size_of;
 use std::{cmp, ptr};
 
+/// Enumeration of errors possible in this library
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Buffer too small")]
+    BufTooSmall,
+    #[error("Buffer too big")]
+    BufTooBig,
+    #[error("Buffer corrupt or uninitialized")]
+    BufCorrupt,
+    #[error("Callback read more items than existed in the buffer")]
+    CallbackReadTooMuch,
+    #[error("Callback wrote more items than available in the buffer")]
+    CallbackWroteTooMuch,
+}
+
 
 #[derive(Copy, Clone)]
 struct Buf<T> {
@@ -31,27 +46,42 @@ const CACHE_LINE_SIZE: usize = 64;
 /// Use this utility function to figure out how big buffer you need to allocate.
 pub fn channel_bufsize<T>(capacity: usize) -> usize { capacity * size_of::<T>() + CACHE_LINE_SIZE }
 
-/// Create a channel (without signaling)
-/// Non-allocating - expects a pre-allocated buffer
-pub fn channel<T: zerocopy::AsBytes + zerocopy::FromBytes>(buffer: &mut [u8]) -> (Sender<T>, Receiver<T>) {
-    let s = Sender::attach(buffer.as_mut_ptr(), buffer.len());
-    let r = Receiver::attach(buffer.as_mut_ptr(), buffer.len());
-    s.buf.count().store(0, Ordering::Relaxed);
-    (s, r)
+/// Initializes a ring buffer.
+///
+/// # Panics
+///
+/// In case the buffer is too small or too big.
+pub fn channel<T: zerocopy::AsBytes + zerocopy::FromBytes + Copy>(buffer: &mut [u8]) -> (Sender<T>, Receiver<T>) {
+    let b = unsafe { Buf::attach(buffer.as_mut_ptr(), buffer.len(), true).unwrap() };
+    (Sender { buf: b, index: 0}, Receiver { buf: b, index: 0})
 }
 
 impl<T> Buf<T> {
     #[inline]
     fn count(&self) -> &AtomicUsize { unsafe { &*self.count_ptr }}
 
-    fn attach(data: *mut u8, length: usize) -> Self {
-        assert!(length >= CACHE_LINE_SIZE + size_of::<T>(), "Buffer too small");
-        assert!(length < isize::MAX as usize, "Buffer too big");
-        Self {
-            count_ptr: data as _,
-            data: unsafe { data.offset(CACHE_LINE_SIZE as isize) } as _,
+    #[inline]
+    fn load_count(&self) -> Result<usize, Error> {
+        let x = self.count().load(Ordering::Acquire);
+        if x > self.length { Err(Error::BufCorrupt) } else { Ok(x) }
+    }
+
+    unsafe fn attach(data: *mut u8, length: usize, init: bool) -> Result<Self, Error> {
+        use Error::*;
+        if length < CACHE_LINE_SIZE + size_of::<T>() { Err(BufTooSmall)? }
+        if length >= isize::MAX as usize { Err(BufTooBig)? }
+        let count_ptr = data as *mut _ as *const AtomicUsize;
+        let r = Self {
+            count_ptr,
+            data: data.offset(CACHE_LINE_SIZE as isize) as _,
             length: (length - CACHE_LINE_SIZE) / size_of::<T>(),
+        };
+        if init {
+            r.count().store(0, Ordering::Release);
+        } else {
+            if r.count().load(Ordering::Acquire) > length { Err(BufCorrupt)? }
         }
+        Ok(r)
     }
 }
 
@@ -60,8 +90,12 @@ impl<T: zerocopy::AsBytes> Sender<T> {
     /// Assume a ringbuf is set up at the location.
     ///
     /// A buffer where the first 64 bytes are zero is okay.
-    pub fn attach(data: *mut u8, length: usize) -> Self {
-        Self { buf: Buf::attach(data, length), index: 0 }
+    ///
+    /// # Safety
+    ///
+    /// You must ensure that "data" points to a readable and writable memory area of "length" bytes.
+    pub unsafe fn attach(data: *mut u8, length: usize) -> Result<Self, Error> {
+        Ok(Self { buf: Buf::attach(data, length, false)?, index: 0 })
     }
 
     /// Lowest level "send" function
@@ -78,10 +112,9 @@ impl<T: zerocopy::AsBytes> Sender<T> {
     ///
     /// Since this is a ringbuffer, there might be more items to write even if you
     /// completely fill up during the closure.
-    pub fn send<F: FnOnce(*mut T, usize) -> usize>(&mut self, f: F) -> (usize, bool) {
-        let cb = self.buf.count().load(Ordering::Acquire);
+    pub fn send<F: FnOnce(*mut T, usize) -> usize>(&mut self, f: F) -> Result<(usize, bool), Error> {
+        let cb = self.buf.load_count()?;
         let l = self.buf.length;
-        assert!(cb <= l);
 
         let n = {
              let end = self.index + cmp::min(l - self.index, l - cb);
@@ -89,7 +122,7 @@ impl<T: zerocopy::AsBytes> Sender<T> {
              let slice_len = end - self.index;
 
              let n = if slice_len == 0 { 0 } else { f(slice_start, slice_len) };
-
+             if n > slice_len { Err(Error::CallbackWroteTooMuch)? }
              assert!(n <= slice_len);
              n
         };
@@ -97,26 +130,30 @@ impl<T: zerocopy::AsBytes> Sender<T> {
         let c = self.buf.count().fetch_add(n, Ordering::AcqRel);
         self.index = (self.index + n) % l;
         // dbg!("Send: cb = {}, c = {}, l = {}, n = {}", cb, c, l, n);
-        (l - c - n, c == 0 && n > 0)
+        Ok((l - c - n, c == 0 && n > 0))
     }
 
     /// "Safe" version of send. Will call your closure up to "count" times
     /// and depend on RVO to avoid memory copies.
     ///
     /// Returns (free items, was empty) like send does
-    pub fn send_foreach<F: FnMut(usize) -> T>(&mut self, count: usize, mut f: F) -> (usize, bool) {
+    ///
+    /// # Panics
+    ///
+    /// Panics in case the buffer is corrupt.
+    pub fn send_foreach<F: FnMut() -> T>(&mut self, count: usize, mut f: F) -> (usize, bool) {
         let mut i = 0;
         self.send(|p, c| {
             while i < c && i < count {
-                unsafe { ptr::write(p.offset(i as isize), f(i)) };
+                unsafe { ptr::write(p.offset(i as isize), f()) };
                 i += 1;
             };
             i
-        })
+        }).unwrap()
     }
 
     /// Returns number of items that can be written
-    pub fn write_count(&self) -> usize { self.buf.length - self.buf.count().load(Ordering::Relaxed) }
+    pub fn write_count(&self) -> Result<usize, Error> { Ok(self.buf.length - self.buf.load_count()?) }
 }
 
 impl<T: zerocopy::FromBytes> Receiver<T> {
@@ -126,33 +163,56 @@ impl<T: zerocopy::FromBytes> Receiver<T> {
     /// f: This closure returns number of items that can be dropped from buffer.
     /// Since this is a ringbuffer, there might be more items to read even if you
     /// read it all during the closure.
-    pub fn recv<F: FnOnce(*const T, usize) -> usize>(&mut self, f: F) -> (usize, bool) {
-        let cb = self.buf.count().load(Ordering::Acquire);
+    pub fn recv<F: FnOnce(*const T, usize) -> usize>(&mut self, f: F) -> Result<(usize, bool), Error> {
+        let cb = self.buf.load_count()?;
         let l = self.buf.length;
-        assert!(cb <= l);
         let n = {
             let data_start = unsafe { self.buf.data.offset(self.index as isize) };
             let data_len = cmp::min(self.index + cb, l) - self.index;
 
             let n = if data_len == 0 { 0 } else { f(data_start, data_len) };
-            assert!(n <= data_len);
+            if n > data_len { Err(Error::CallbackReadTooMuch)? }
             n
         };
 
         let c = self.buf.count().fetch_sub(n, Ordering::AcqRel);
         self.index = (self.index + n) % l;
         // dbg!("Recv: cb = {}, c = {}, l = {}, n = {}", cb, c, l, n);
-        return (c - n, c >= l && n > 0)
+        return Ok((c - n, c >= l && n > 0))
     }
 
+    /// "Safe" version of recv. Will call your closure up to "count" times
+    /// and depend on optimisation to avoid memory copies.
+    ///
+    /// Returns (free items, was empty) like send does
+    ///
+    /// # Panics
+    ///
+    /// Panics in case the buffer is corrupt.
+    pub fn recv_foreach<F: FnMut(T)>(&mut self, count: usize, mut f: F) -> (usize, bool) {
+        self.recv(|p, c| {
+            let mut i = 0;
+            while i < c && i < count {
+                f(unsafe { ptr::read(p.offset(i as isize)) });
+                i += 1;
+            };
+            i
+        }).unwrap()
+    }
+
+
     /// Returns number of items that can be read
-    pub fn read_count(&self) -> usize { self.buf.count().load(Ordering::Relaxed) }
+    pub fn read_count(&self) -> Result<usize, Error> { self.buf.load_count() }
 
     /// Assume a ringbuf is set up at the location.
     ///
     /// A buffer where the first 64 bytes are zero is okay.
-    pub fn attach(data: *mut u8, length: usize) -> Self {
-        Self { buf: Buf::attach(data, length), index: 0 }
+    ///
+    /// # Safety
+    ///
+    /// You must ensure that "data" points to a readable and writable memory area of "length" bytes.
+    pub unsafe fn attach(data: *mut u8, length: usize) -> Result<Self, Error> {
+        Ok(Self { buf: Buf::attach(data, length, false)?, index: 0 })
     }
 }
 
@@ -164,32 +224,32 @@ mod tests {
         let mut v = vec![10; 100];
         let (mut s, mut r) = super::channel(&mut v);
         // is it empty?
-        r.recv(|_,_| panic!());
+        r.recv(|_,_| panic!()).unwrap();
         s.send(|d, l| {
             assert!(l > 0);
             unsafe { *d = 5u16 };
             1
-        });
+        }).unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 1);
             assert_eq!(unsafe { *d }, 5);
             0
-        });
+        }).unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 1);
             assert_eq!(unsafe { *d }, 5);
             1
-        });
-        r.recv(|_, _| panic!());
+        }).unwrap();
+        r.recv(|_, _| panic!()).unwrap();
 
         let mut i = 6;
-        s.send_foreach(2, |_| { i += 1; i } );
+        s.send_foreach(2, || { i += 1; i } );
         r.recv(|d, l| {
             assert_eq!(l, 2);
             let x = unsafe { std::ptr::read(d as *const [u16; 2]) };
             assert_eq!(x, [7, 8]);
             2
-        });
+        }).unwrap();
     }
 
     #[test]
@@ -201,40 +261,40 @@ mod tests {
             assert_eq!(l, 3);
             unsafe { std::ptr::write(dd as *mut [u16; 3], [5, 8, 9]); }
             2
-        });
+        }).unwrap();
         let mut called = false;
-        s.send_foreach(2, |i| {
+        s.send_foreach(2, || {
             assert_eq!(called, false);
-            assert_eq!(i, 0);
             called = true;
             10
         });
-        s.send(|_, _| panic!());
+        s.send(|_, _| panic!()).unwrap();
         r.recv(|_, l| {
             assert_eq!(l, 3);
             0
-        });
-        s.send(|_, _| panic!());
+        }).unwrap();
+        s.send(|_, _| panic!()).unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 3);
             assert_eq!([5, 8, 10], unsafe { std::ptr::read(d as *const [u16; 3]) });
             1
-        });
+        }).unwrap();
         s.send(|d, l| {
             assert_eq!(l, 1);
             unsafe { *d = 1 };
             1
-        });
-        s.send(|_, _| panic!());
+        }).unwrap();
+        s.send(|_, _| panic!()).unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 2);
             assert_eq!([8, 10], unsafe { std::ptr::read(d as *const [u16; 2]) });
             2
-        });
-        r.recv(|d, l| {
-            assert_eq!(l, 1);
-            assert_eq!(unsafe { *d }, 1);
-            1
+        }).unwrap();
+        let mut called = false;
+        r.recv_foreach(56, |d| {
+            assert_eq!(called, false);
+            called = true;
+            assert_eq!(d, 1);
         });
     }
 }
