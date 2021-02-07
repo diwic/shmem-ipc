@@ -50,7 +50,7 @@ pub fn mmap_raw_from_memfd(memfd: &mfd::Memfd) -> Result<mmap::MmapRaw, Error> {
     Ok(r)
 }
 
-
+pub mod ringbuf;
 
 #[cfg(test)]
 mod tests {
