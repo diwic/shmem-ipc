@@ -5,7 +5,12 @@ authors = ["David Henningsson <coding@diwic.se>"]
 edition = "2018"
 readme = "README.md"
 license = "Apache-2.0/MIT"
-keywords = ["IPC", "memfd", "shmem", "shared memory"]
+keywords = ["IPC", "memfd", "shmem", "memory"]
+documentation = "https://docs.rs/shmem-ipc"
+repository = "https://github.com/diwic/shmem-ipc/"
+homepage = "https://github.com/diwic/shmem-ipc/"
+categories = ["memory-management", "network-programming"]
+description = "High-performance shared memory communication on Linux"
 
 [dependencies]
 memfd = "0.3.0"
