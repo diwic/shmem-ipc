@@ -6,6 +6,8 @@
 //!  * empty signal file descriptor
 //!  * full signal file descriptor
 
+use std::slice::from_raw_parts;
+use std::slice::from_raw_parts_mut;
 use super::Error;
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
@@ -104,6 +106,21 @@ impl<T: Copy + zerocopy::AsBytes> Sender<T> {
         Ok(status)
     }
 
+    /// Sends one or more items through the ringbuffer.
+    ///
+    /// The closure receives a slice to which it can write data and returns the number of items
+    /// written.
+    /// If the buffer is full, the closure is not called. If there is more data that could be written
+    /// (e g in another part of the ringbuffer), that is indicated in the returned `Status` struct.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that no one can read or write the data area, except for
+    /// at most one Sender (this one) and at most one Receiver, both set up correctly.
+    pub unsafe fn send_trusted<F: FnOnce(&mut[T]) -> usize>(&mut self, f: F) -> Result<Status, Error> {
+        self.send_raw(|p, count| f(from_raw_parts_mut(p, count)))
+    }
+
     /// For blocking scenarios, blocks until the channel is writable.
     pub fn block_until_writable(&mut self) -> Result<Status, Error> {
         loop {
@@ -159,6 +176,21 @@ impl<T: Copy + zerocopy::FromBytes> Receiver<T> {
         let status = self.receiver_mut().recv(f)?;
         if status.signal { self.full_signal().write(&1u64.to_ne_bytes())?; }
         Ok(status)
+    }
+
+    /// Receives data from the ringbuffer.
+    ///
+    /// The closure receives a slice of data and returns the number of items that can be dropped
+    /// from the ringbuffer.
+    /// If the buffer is empty, the closure is not called. If there is more data that could be read
+    /// (e g in another part of the ringbuffer), that is indicated in the returned `Status` struct.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that no one can read or write the data area, except for
+    /// at most one Receiver (this one) and at most one Sender, both set up correctly.
+    pub unsafe fn receive_trusted<F: FnOnce(&[T]) -> usize>(&mut self, f: F) -> Result<Status, Error> {
+        self.receive_raw(|p, count| f(from_raw_parts(p, count)))
     }
 
     /// For blocking scenarios, blocks until the channel is readable.

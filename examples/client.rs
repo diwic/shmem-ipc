@@ -4,7 +4,7 @@ use dbus::blocking::{Connection, Proxy};
 use dbus::arg::OwnedFd;
 use std::error::Error;
 use std::thread::sleep;
-use shmem_ipc::untrusted::Sender;
+use shmem_ipc::sharedring::Sender;
 use std::time::Duration;
 use std::fs::File;
 use std::os::unix::io::FromRawFd;

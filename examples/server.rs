@@ -15,7 +15,7 @@ use dbus::blocking::Connection;
 use dbus::arg::OwnedFd;
 use dbus_crossroads::{Crossroads};
 use std::error::Error;
-use shmem_ipc::untrusted::Receiver;
+use shmem_ipc::sharedring::Receiver;
 
 const CAPACITY: usize = 500000;
 
