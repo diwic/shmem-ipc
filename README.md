@@ -42,4 +42,4 @@ License
 -------
 
 The code is Apache 2.0 / MIT dual licensed. Any code submitted in Pull Requests, discussions or
-issues are assumed to have this license, unless explicitly stated otherwise.
+issues is assumed to have this license, unless explicitly stated otherwise.
