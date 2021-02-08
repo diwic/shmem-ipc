@@ -8,7 +8,7 @@ license = "Apache-2.0/MIT"
 
 [dependencies]
 memfd = { git = "https://github.com/lucab/memfd-rs", rev = "7d4cf31fd3"}
-memmap2 = { git = "https://github.com/diwic/memmap2-rs.git" }
+memmap2 = { git = "https://github.com/RazrFalcon/memmap2-rs.git", rev = "e042b5eae71" }
 # memfd depends on thiserror, so we can depend on it too without causing
 # additional dependencies.
 thiserror = "1"

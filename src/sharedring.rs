@@ -66,14 +66,14 @@ impl<T: Copy + zerocopy::AsBytes> Sender<T> {
     /// Sets up a new ringbuffer and returns the sender half.
     pub fn new(capacity: usize) -> Result<Self, Error> {
         let inner = Inner::new::<T>(capacity)?;
-        let ringbuf = unsafe { crate::ringbuf::Sender::attach(inner.mmap.as_ptr(), inner.mmap.len())? };
+        let ringbuf = unsafe { crate::ringbuf::Sender::attach(inner.mmap.as_mut_ptr(), inner.mmap.len())? };
         Ok(Self(inner, ringbuf))
     }
 
     /// Attaches to a ringbuffer set up by the receiving side.
     pub fn open(capacity: usize, memfd: File, empty_signal: File, full_signal: File) -> Result<Self, Error> {
         let inner = Inner::open::<T>(capacity, memfd, empty_signal, full_signal)?;
-        let ringbuf = unsafe { crate::ringbuf::Sender::attach(inner.mmap.as_ptr(), inner.mmap.len())? };
+        let ringbuf = unsafe { crate::ringbuf::Sender::attach(inner.mmap.as_mut_ptr(), inner.mmap.len())? };
         Ok(Self(inner, ringbuf))
     }
 
@@ -139,14 +139,14 @@ impl<T: Copy + zerocopy::FromBytes> Receiver<T> {
     /// Sets up a new ringbuffer and returns the receiver half.
     pub fn new(capacity: usize) -> Result<Self, Error> {
         let inner = Inner::new::<T>(capacity)?;
-        let ringbuf = unsafe { crate::ringbuf::Receiver::attach(inner.mmap.as_ptr(), inner.mmap.len())? };
+        let ringbuf = unsafe { crate::ringbuf::Receiver::attach(inner.mmap.as_mut_ptr(), inner.mmap.len())? };
         Ok(Self(inner, ringbuf))
     }
 
     /// Attaches to a ringbuffer set up by the sending side.
     pub fn open(capacity: usize, memfd: File, empty_signal: File, full_signal: File) -> Result<Self, Error> {
         let inner = Inner::open::<T>(capacity, memfd, empty_signal, full_signal)?;
-        let ringbuf = unsafe { crate::ringbuf::Receiver::attach(inner.mmap.as_ptr(), inner.mmap.len())? };
+        let ringbuf = unsafe { crate::ringbuf::Receiver::attach(inner.mmap.as_mut_ptr(), inner.mmap.len())? };
         Ok(Self(inner, ringbuf))
     }
 
