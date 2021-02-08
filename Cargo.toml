@@ -3,6 +3,8 @@ name = "shmem-ipc"
 version = "0.1.0"
 authors = ["David Henningsson <coding@diwic.se>"]
 edition = "2018"
+readme = "README.md"
+license = "Apache-2.0/MIT"
 
 [dependencies]
 memfd = { git = "https://github.com/lucab/memfd-rs", rev = "7d4cf31fd3"}
@@ -13,3 +15,7 @@ thiserror = "1"
 zerocopy = "0.3"
 libc = "0.2.85"
 byteorder = "1.4"
+
+[dev-dependencies]
+dbus = "0.9"
+dbus-crossroads = "0.3"
