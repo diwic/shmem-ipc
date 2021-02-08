@@ -4,7 +4,8 @@
 
 Communication between processes using shared memory.
 
-== When is this crate useful? ==
+When is this crate useful?
+--------------------------
 
  * When the data transferred is large, and
  * performance or latency is crucial, and
@@ -21,7 +22,8 @@ As for Linux, this crate uses memfd sealing to ensure safety between untrusted p
 and ringbuffer signaling is done using eventfd for best performance.
 These two features are Linux only.
 
-== Getting started ==
+Getting started
+---------------
 
 You probably want to start in the `sharedring` module, which sets up a lock-free ringbuffer
 between untrusted processes. Another useful function is `mem::oneshot` for a scenario where
@@ -36,7 +38,8 @@ it's also possible using [unix sockets](https://crates.io/crates/uds).
 There is also a client/server example in the `examples` directory that can help you get started.
 Enjoy!
 
-== License ==
+License
+-------
 
 The code is Apache 2.0 / MIT dual licensed. Any code submitted in Pull Requests, discussions or
 issues are assumed to have this license, unless explicitly stated otherwise.
