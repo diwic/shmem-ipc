@@ -4,13 +4,39 @@
 
 Communication between processes using shared memory.
 
-This crate uses memfd sealing to ensure safety between untrusted processes,
-and therefore, it works only on Linux.
+== When is this crate useful? ==
 
-You might want to start in the `sharedring` module, which sets up a lock-free ringbuffer
+ * When the data transferred is large, and
+ * performance or latency is crucial, and
+ * you run Linux.
+
+A typical use case could be audio/video streaming.
+
+Don't need maximum performance and minimal latency? Try [D-Bus](https://docs.rs/dbus/).
+
+Transferring small amounts of data? Then a [unix socket](https://doc.rust-lang.org/std/os/unix/net/struct.UnixStream.html)
+is easier to set up and has similar performance.
+
+As for Linux, this crate uses memfd sealing to ensure safety between untrusted processes,
+and ringbuffer signaling is done using eventfd for best performance.
+These two features are Linux only.
+
+== Getting started ==
+
+You probably want to start in the `sharedring` module, which sets up a lock-free ringbuffer
 between untrusted processes. Another useful function is `mem::oneshot` for a scenario where
 you write data once and make it available for reading afterwards. The `mem` and `ringbuf`
-contain building blocks that might be useful in other use cases.
+modules contain building blocks that might be useful in other use cases.
+
+The downside of using memfd based shared memory is that you need to set it up
+by transferring file descriptors, using some other way of communication.
+Using [D-Bus](https://docs.rs/dbus/) would be the standard way of doing that -
+it's also possible using [unix sockets](https://crates.io/crates/uds).
 
 There is also a client/server example in the `examples` directory that can help you get started.
 Enjoy!
+
+== License ==
+
+The code is Apache 2.0 / MIT dual licensed. Any code submitted in Pull Requests, discussions or
+issues are assumed to have this license, unless explicitly stated otherwise.

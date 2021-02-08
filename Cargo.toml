@@ -8,7 +8,7 @@ license = "Apache-2.0/MIT"
 keywords = ["IPC", "memfd", "shmem", "shared memory"]
 
 [dependencies]
-memfd = { git = "https://github.com/lucab/memfd-rs", rev = "7d4cf31fd3"}
+memfd = "0.3.0"
 memmap2 = "0.2.1"
 # memfd depends on thiserror, so we can depend on it too without causing
 # additional dependencies.
