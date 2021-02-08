@@ -1,3 +1,5 @@
+//! Functions for creating memory maps from memfds.
+
 /// Reexport the memmap2 crate
 pub mod mmap {
     pub use memmap2::*;
@@ -8,14 +10,7 @@ pub mod mfd {
     pub use memfd::*;
 }
 
-/// Enumeration of errors possible in this library
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Memfd errors")]
-    Memfd(#[from] mfd::Error),
-    #[error("OS errors")]
-    Io(#[from] std::io::Error),
-}
+use super::Error;
 
 fn verify_seal(memfd: &mfd::Memfd, seal: mfd::FileSeal) -> Result<(), Error> {
     let seals = memfd.seals()?;
@@ -57,7 +52,7 @@ pub fn raw_memfd(memfd: &mfd::Memfd) -> Result<mmap::MmapRaw, Error> {
 ///
 /// # Example
 /// ```rust
-/// use memfd_ipc::mem::{oneshot, read_memfd};
+/// use shmem_ipc::mem::{oneshot, read_memfd};
 /// // Create a 4 MB memory area
 /// let memfd = oneshot(1024*1024*4, "write_then_read_test", |x| {
 ///      // Fill it with data

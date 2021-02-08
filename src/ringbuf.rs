@@ -111,15 +111,11 @@ impl<T: zerocopy::AsBytes + Copy> Sender<T> {
 
     /// Lowest level "send" function
     ///
-    /// Returns (free items, was empty)
-    /// The first item is number of items that can be written to the buffer (until it's full).
-    /// The second item is true if the buffer was empty but was written to
-    /// (this can be used to signal remote side that more data can be read).
-    /// f: This closure returns number of items written to the buffer.
+    /// The closure will be called only if the buffer is not full, and needs to returns the number
+    /// of items written to the buffer.
     ///
-    /// The pointer sent to the closure is an "out" parameter and contains
-    /// garbage data on entering the closure. (This cannot safely be a &mut [T] because
-    /// the closure might then read from uninitialized memory, even though it shouldn't)
+    /// The pointer sent to the closure is an "out" parameter to the first item, and the second
+    /// parameter is the number of items that can be written to the buffer
     ///
     /// Since this is a ringbuffer, there might be more items to write even if you
     /// completely fill up during the closure.

@@ -5,9 +5,11 @@ authors = ["David Henningsson <coding@diwic.se>"]
 edition = "2018"
 
 [dependencies]
-memfd = "0.3"
-memmap2 = { path="../memmap2-rs" } # , git = "https://github.com/diwic/memmap2-rs.git" }
+memfd = { git = "https://github.com/lucab/memfd-rs", rev = "7d4cf31fd3"}
+memmap2 = { git = "https://github.com/diwic/memmap2-rs.git" }
 # memfd depends on thiserror, so we can depend on it too without causing
 # additional dependencies.
 thiserror = "1"
 zerocopy = "0.3"
+libc = "0.2.85"
+byteorder = "1.4"
