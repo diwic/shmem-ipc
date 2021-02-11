@@ -25,3 +25,8 @@ byteorder = "1.4"
 [dev-dependencies]
 dbus = "0.9"
 dbus-crossroads = "0.3"
+criterion = { version = "0.3", features = ["html_reports"] }
+
+[[bench]]
+name = "sharedring1"
+harness = false
