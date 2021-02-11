@@ -13,10 +13,11 @@ When is this crate useful?
 
 A typical use case could be audio/video streaming.
 
-Don't need maximum performance and minimal latency? Try [D-Bus](https://docs.rs/dbus/).
+Don't need maximum performance and minimal latency, and want a serialization protocol built-in?
+Try [D-Bus](https://docs.rs/dbus/).
 
-Transferring small amounts of data? Then a [unix socket](https://doc.rust-lang.org/std/os/unix/net/struct.UnixStream.html)
-is easier to set up and has similar performance.
+Also, a [unix socket](https://doc.rust-lang.org/std/os/unix/net/struct.UnixStream.html)
+is easier to set up and is not that much slower (see benchmark below).
 
 As for Linux, this crate uses memfd sealing to ensure safety between untrusted processes,
 and ringbuffer signaling is done using eventfd for best performance.
@@ -37,6 +38,11 @@ it's also possible using [unix sockets](https://crates.io/crates/uds).
 
 There is also a client/server example in the `examples` directory that can help you get started.
 Enjoy!
+
+Benchmark
+---------
+
+[![Sharedring vs unix sockets](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)
 
 License
 -------
