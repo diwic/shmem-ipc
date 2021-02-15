@@ -53,10 +53,7 @@ impl Inner {
 
     fn open<T>(capacity: usize, file: File, empty_signal: File, full_signal: File) -> Result<Self, Error> {
         let bytes = round_to_page_size::<T>(capacity);
-        // let memfd = memfd::Memfd::try_from_file(file).map_err(|_| std::io::Error::last_os_error())?;
-        // "either" is changed to a "result" upstream, but it's not released yet.
-        let memfd_result: Result<memfd::Memfd, _> = memfd::Memfd::try_from_file(file).flip().into();
-        let memfd = memfd_result.map_err(|_| std::io::Error::last_os_error())?;
+        let memfd = memfd::Memfd::try_from_file(file).map_err(|_| std::io::Error::last_os_error())?;
         let mmap = crate::mem::raw_memfd(&memfd)?;
         if mmap.len() < bytes { Err(crate::ringbuf::Error::BufTooSmall)? };
         Ok(Self { mmap, memfd, empty_signal, full_signal })

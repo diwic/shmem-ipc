@@ -13,7 +13,7 @@ categories = ["memory-management", "network-programming"]
 description = "High-performance shared memory communication on Linux"
 
 [dependencies]
-memfd = "0.3.0"
+memfd = "0.4.0"
 memmap2 = "0.2.1"
 # memfd depends on thiserror, so we can depend on it too without causing
 # additional dependencies.
