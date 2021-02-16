@@ -26,8 +26,8 @@ Getting started
 ---------------
 
 You probably want to start in the `sharedring` module, which sets up a ringbuffer
-between untrusted processes (it's a wait-free and lock-free, bounded, SPSC queue).
-Another useful function is `mem::oneshot` for a scenario where
+between untrusted processes (it's a wait-free/lock-free, bounded, SPSC queue).
+Another useful function is `mem::write_once` for a scenario where
 you write data once and make it available for reading afterwards. The `mem` and `ringbuf`
 modules contain building blocks that might be useful in other use cases.
 

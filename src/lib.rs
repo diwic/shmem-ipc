@@ -4,7 +4,7 @@
 //! and therefore, it works only on Linux.
 //!
 //! You might want to start in the `sharedring` module, which sets up a lock-free ringbuffer
-//! between untrusted processes. Another useful function is `mem::oneshot` for a scenario where
+//! between untrusted processes. Another useful function is `mem::write_once` for a scenario where
 //! you write data once and make it available for reading afterwards. The `mem` and `ringbuf`
 //! contain building blocks that might be useful in other use cases.
 //!
