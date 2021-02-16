@@ -53,7 +53,7 @@ fn bench_one_unixsocket<M: measurement::Measurement>(c: &mut BenchmarkGroup<M>, 
     sender.set_nonblocking(true).unwrap();
     let mut rbuf: Vec<u64> = init.into();
     let initsum = sum(init);
-    c.bench_with_input(BenchmarkId::new("UnixSocket", init.len()*8), &(), |b,_| b.iter(|| {
+    c.bench_with_input(BenchmarkId::new("Unix socket", init.len()*8), &(), |b,_| b.iter(|| {
         let mut x = 0;
         let mut ss: u64 = 0;
         while x < init.len() {
@@ -66,6 +66,33 @@ fn bench_one_unixsocket<M: measurement::Measurement>(c: &mut BenchmarkGroup<M>, 
         }
         assert_eq!(x, init.len());
         assert_eq!(initsum, ss);
+    }));
+}
+
+fn bench_one_dbus<M: measurement::Measurement>(c: &mut BenchmarkGroup<M>, init: &[u64]) {
+    let initsum = sum(init);
+    let initlen = init.len();
+    let done = std::rc::Rc::new(std::cell::Cell::new(false));
+
+    use dbus::blocking::LocalConnection;
+    use dbus::message::MatchRule;
+    use dbus::Message;
+    use dbus::channel::Sender;
+    let conn = LocalConnection::new_session().unwrap();
+    let done2 = done.clone();
+    conn.add_match(MatchRule::new_signal("sharedring.benchmark", "Benchmark"), move |_: (), _, msg| {
+        let data: &[u64] = msg.read1().unwrap();
+        assert_eq!(data.len(), initlen);
+        assert_eq!(initsum, sum(data));
+        done2.set(true);
+        true
+    }).unwrap();
+
+    c.bench_with_input(BenchmarkId::new("D-Bus", init.len()*8), &(), |b,_| b.iter(|| {
+        done.set(false);
+        let msg = Message::new_signal("/benchmark", "sharedring.benchmark", "Benchmark").unwrap().append1(init);
+        conn.send(msg).unwrap();
+        while !done.get() { conn.process(Duration::from_millis(1000)).unwrap(); }
     }));
 }
 
@@ -82,6 +109,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     loop {
         bench_one(&mut group, &v);
         bench_one_unixsocket(&mut group, &v);
+        bench_one_dbus(&mut group, &v);
         if v.len() > 1024*1024 { return; }
         v.extend_from_slice(&v.clone());
     }
