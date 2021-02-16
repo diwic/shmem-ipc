@@ -2,9 +2,9 @@
 [![API documentation](https://docs.rs/shmem-ipc/badge.svg)](https://docs.rs/shmem-ipc)
 [![license](https://img.shields.io/crates/l/shmem-ipc.svg)](https://crates.io/crates/shmem-ipc)
 
-Communication between processes using shared memory.
+Untrusted IPC with maximum performance and minimum latency. On Rust, on Linux.
 
-When is this crate useful?
+When is this Rust crate useful?
 --------------------------
 
  * Performance or latency is crucial, and
@@ -12,8 +12,8 @@ When is this crate useful?
 
 A typical use case could be audio/video streaming.
 
-Don't need maximum performance and minimal latency, and want a serialization protocol built-in?
-Try [D-Bus](https://docs.rs/dbus/).
+Don't need maximum performance and minimum latency, and want a higher level protocol
+with serialization and lots of bells and whistles built-in? Try [D-Bus](https://docs.rs/dbus/).
 
 Also, a [unix socket](https://doc.rust-lang.org/std/os/unix/net/struct.UnixStream.html)
 is easier to set up and is not that much slower (see benchmark below).
@@ -42,7 +42,10 @@ Enjoy!
 Benchmark
 ---------
 
-[![Sharedring vs unix sockets](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)
+Notice the log scale: for a 64K packet, sharedring is a factor 3 faster than unix sockets,
+and a factor 60 faster than D-Bus. (D-Bus is a higher level protocol, so that comparison
+is to some degree comparing apples and oranges.)
+[![Sharedring vs unix sockets vs D-Bus](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)
 
 License
 -------

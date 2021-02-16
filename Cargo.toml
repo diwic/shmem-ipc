@@ -1,6 +1,6 @@
 [package]
 name = "shmem-ipc"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["David Henningsson <coding@diwic.se>"]
 edition = "2018"
 readme = "README.md"
@@ -10,13 +10,13 @@ documentation = "https://docs.rs/shmem-ipc"
 repository = "https://github.com/diwic/shmem-ipc/"
 homepage = "https://github.com/diwic/shmem-ipc/"
 categories = ["memory-management", "network-programming"]
-description = "High-performance shared memory communication on Linux"
+description = "Untrusted IPC with maximum performance and minimum latency on Linux"
 
 [dependencies]
 memfd = "0.4.0"
 memmap2 = "0.2.1"
-# memfd depends on thiserror, so we can depend on it too without causing
-# additional dependencies.
+# Zerocopy depends on proc-macro2 and syn, so having "thiserror" as a
+# dependency does not add too much compilation time.
 thiserror = "1"
 zerocopy = "0.3"
 libc = "0.2.85"
