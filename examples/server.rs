@@ -10,9 +10,8 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::thread;
 use dbus::MethodErr;
-use std::os::unix::io::IntoRawFd;
 use dbus::blocking::Connection;
-use dbus::arg::OwnedFd;
+use std::fs::File;
 use dbus_crossroads::{Crossroads};
 use std::error::Error;
 use shmem_ipc::sharedring::Receiver;
@@ -25,13 +24,12 @@ struct State {
 }
 
 impl State {
-    fn add_receiver(&mut self) -> Result<(u64, OwnedFd, OwnedFd, OwnedFd), Box<dyn Error>> {
+    fn add_receiver(&mut self) -> Result<(u64, File, File, File), Box<dyn Error>> {
         // Create a receiver in shared memory.
         let mut r = Receiver::new(CAPACITY as usize)?;
-        // These are just to convert the file descriptors to D-Bus format
-        let m = unsafe { OwnedFd::new(r.memfd().as_file().try_clone()?.into_raw_fd()) };
-        let e = unsafe { OwnedFd::new(r.empty_signal().try_clone()?.into_raw_fd()) };
-        let f = unsafe { OwnedFd::new(r.full_signal().try_clone()?.into_raw_fd()) };
+        let m = r.memfd().as_file().try_clone()?;
+        let e = r.empty_signal().try_clone()?;
+        let f = r.full_signal().try_clone()?;
         // In this example, we spawn a thread for every ringbuffer.
         // More complex real-world scenarios might multiplex using non-block frameworks,
         // as well as having a mechanism to detect when a client is gone.

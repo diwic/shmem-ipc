@@ -42,10 +42,10 @@ Enjoy!
 Benchmark
 ---------
 
-Notice the log scale: for a 64K packet, sharedring is a factor 3 faster than unix sockets,
-and a factor 60 faster than D-Bus. (D-Bus is a higher level protocol, so that comparison
-is to some degree comparing apples and oranges.)
 [![Sharedring vs unix sockets vs D-Bus](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)](https://github.com/diwic/shmem-ipc/blob/master/lines.svg)
+Notice the log scale: for a 64K packet, sharedring is a three times faster than unix sockets,
+and 60 times faster than D-Bus. (D-Bus is a higher level protocol, so that comparison
+is to some degree comparing apples and oranges.)
 
 License
 -------

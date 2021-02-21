@@ -1,25 +1,20 @@
 //! Sends a lot of f64 values over shared memory to the server every second.
 
 use dbus::blocking::{Connection, Proxy};
-use dbus::arg::OwnedFd;
 use std::error::Error;
 use std::thread::sleep;
 use shmem_ipc::sharedring::Sender;
 use std::time::Duration;
 use std::fs::File;
-use std::os::unix::io::FromRawFd;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Setup a D-Bus connection and call the Setup method of the server.
     let c = Connection::new_session()?;
     let proxy = Proxy::new("com.example.shmemtest", "/shmemtest", Duration::from_millis(3000), &c);
-    let (capacity, memfd, empty_signal, full_signal): (u64, OwnedFd, OwnedFd, OwnedFd) =
+    let (capacity, memfd, empty_signal, full_signal): (u64, File, File, File) =
         proxy.method_call("com.example.shmemtest", "Setup", ())?;
 
-    // Convert the file descriptors and setup the ringbuffer.
-    let memfd = unsafe { File::from_raw_fd(memfd.into_fd()) };
-    let empty_signal = unsafe { File::from_raw_fd(empty_signal.into_fd()) };
-    let full_signal = unsafe { File::from_raw_fd(full_signal.into_fd()) };
+    // Setup the ringbuffer.
     let mut r = Sender::open(capacity as usize, memfd, empty_signal, full_signal)?;
     let mut items = 100000;
     loop {
