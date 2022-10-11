@@ -32,6 +32,7 @@ struct Buf<T> {
 }
 
 unsafe impl<T> Send for Buf<T> {}
+unsafe impl<T> Sync for Buf<T> {}
 
 pub struct Sender<T> {
     buf: Buf<T>,
