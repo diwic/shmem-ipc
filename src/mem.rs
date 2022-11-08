@@ -14,12 +14,13 @@ use super::Error;
 
 fn verify_seal(memfd: &mfd::Memfd, seal: mfd::FileSeal) -> Result<(), Error> {
     let seals = memfd.seals()?;
-    if seals.contains(&seal) { return Ok(()) }
+    if seals.contains(&seal) {
+        return Ok(());
+    }
     // Try to add the seal.
     memfd.add_seal(seal)?;
     Ok(())
 }
-
 
 /// Creates a memory map of a memfd. The memfd is sealed to be read only.
 pub fn read_memfd(memfd: &mfd::Memfd) -> Result<mmap::Mmap, Error> {
@@ -33,7 +34,7 @@ pub fn read_memfd(memfd: &mfd::Memfd) -> Result<mmap::Mmap, Error> {
 }
 
 /// Creates a raw memory map of a memfd, suitable for IPC. It must be writable.
-pub fn raw_memfd(memfd: &mfd::Memfd) -> Result<mmap::MmapRaw, Error> {
+pub fn raw_memfd(memfd: &mfd::Memfd, len: usize) -> Result<mmap::MmapRaw, Error> {
     // The file can be truncated; no safe memory mapping.
     verify_seal(&memfd, mfd::FileSeal::SealShrink)?;
 
@@ -41,8 +42,7 @@ pub fn raw_memfd(memfd: &mfd::Memfd) -> Result<mmap::MmapRaw, Error> {
     // If the file later is trying to be sealed as read-only, that call will fail and
     // our mapping will remain.
 
-    let r = mmap::MmapOptions::new().map_raw(memfd.as_file())?;
-    Ok(r)
+    Ok(mmap::MmapOptions::new().len(len).map_raw(memfd.as_file())?)
 }
 
 /// Creates a shared memory area that can be written once and read many times.
@@ -63,8 +63,10 @@ pub fn raw_memfd(memfd: &mfd::Memfd) -> Result<mmap::MmapRaw, Error> {
 /// // Read the data
 /// for (i, j) in map.iter().enumerate() { assert_eq!(i as u8, *j); }
 /// ```
-pub fn write_once<F: FnOnce(&mut[u8])>(size: u64, name: &str, f: F) -> Result<mfd::Memfd, Error> {
-    let opts = memfd::MemfdOptions::new().allow_sealing(true).close_on_exec(true);
+pub fn write_once<F: FnOnce(&mut [u8])>(size: u64, name: &str, f: F) -> Result<mfd::Memfd, Error> {
+    let opts = memfd::MemfdOptions::new()
+        .allow_sealing(true)
+        .close_on_exec(true);
     let mut h = mfd::SealsHashSet::new();
     h.insert(mfd::FileSeal::SealGrow);
     h.insert(mfd::FileSeal::SealShrink);
@@ -75,7 +77,13 @@ pub fn write_once<F: FnOnce(&mut[u8])>(size: u64, name: &str, f: F) -> Result<mf
 }
 
 /// Like "write_once", but allows for customisation of the memfd_options and seals added after writing.
-pub fn write_once_custom<F: FnOnce(&mut[u8])>(size: u64, name: &str, memfd_options: memfd::MemfdOptions, seals: &mfd::SealsHashSet, f: F) -> Result<mfd::Memfd, Error> {
+pub fn write_once_custom<F: FnOnce(&mut [u8])>(
+    size: u64,
+    name: &str,
+    memfd_options: memfd::MemfdOptions,
+    seals: &mfd::SealsHashSet,
+    f: F,
+) -> Result<mfd::Memfd, Error> {
     let memfd = memfd_options.create(name)?;
     // Sets the memory to zeroes.
     memfd.as_file().set_len(size)?;
@@ -84,7 +92,7 @@ pub fn write_once_custom<F: FnOnce(&mut[u8])>(size: u64, name: &str, memfd_optio
     f(&mut m);
     drop(m);
     if !seals.is_empty() {
-        memfd.add_seals(&seals)?;
+        memfd.add_seals(seals)?;
     }
     Ok(memfd)
 }
@@ -103,7 +111,7 @@ mod tests {
         assert!(memfd.seals()?.contains(&mfd::FileSeal::SealWrite));
         assert_eq!(mmap.len(), 16384);
         // The memfd is now read-only, cannot create a writable one.
-        assert!(raw_memfd(&memfd).is_err());
+        assert!(raw_memfd(&memfd, 16384).is_err());
         Ok(())
     }
 
@@ -112,7 +120,7 @@ mod tests {
         let opts = mfd::MemfdOptions::default().allow_sealing(true);
         let memfd = opts.create("test-raw")?;
         memfd.as_file().set_len(16384)?;
-        let mmap_raw = raw_memfd(&memfd)?;
+        let mmap_raw = raw_memfd(&memfd, 16384)?;
         assert_eq!(mmap_raw.len(), 16384);
         // The memfd now has a writable mapping, cannot create a read-only one.
         assert!(read_memfd(&memfd).is_err());
