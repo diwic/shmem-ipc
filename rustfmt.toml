@@ -1,0 +1,11 @@
+max_width = 128
+fn_single_line = true
+where_single_line = true
+unstable_features = true
+fn_args_layout = "Compressed"
+use_small_heuristics = "Max"
+
+# I don't like rustfmt myself but if you really have to use it, 
+# the options above seems to be the ones that makes the code
+# the least more ugly. :-\
+

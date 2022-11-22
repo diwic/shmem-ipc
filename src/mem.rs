@@ -64,9 +64,7 @@ pub fn raw_memfd(memfd: &mfd::Memfd, len: usize) -> Result<mmap::MmapRaw, Error>
 /// for (i, j) in map.iter().enumerate() { assert_eq!(i as u8, *j); }
 /// ```
 pub fn write_once<F: FnOnce(&mut [u8])>(size: u64, name: &str, f: F) -> Result<mfd::Memfd, Error> {
-    let opts = memfd::MemfdOptions::new()
-        .allow_sealing(true)
-        .close_on_exec(true);
+    let opts = memfd::MemfdOptions::new().allow_sealing(true).close_on_exec(true);
     let mut h = mfd::SealsHashSet::new();
     h.insert(mfd::FileSeal::SealGrow);
     h.insert(mfd::FileSeal::SealShrink);
@@ -78,11 +76,7 @@ pub fn write_once<F: FnOnce(&mut [u8])>(size: u64, name: &str, f: F) -> Result<m
 
 /// Like "write_once", but allows for customisation of the memfd_options and seals added after writing.
 pub fn write_once_custom<F: FnOnce(&mut [u8])>(
-    size: u64,
-    name: &str,
-    memfd_options: memfd::MemfdOptions,
-    seals: &mfd::SealsHashSet,
-    f: F,
+    size: u64, name: &str, memfd_options: memfd::MemfdOptions, seals: &mfd::SealsHashSet, f: F,
 ) -> Result<mfd::Memfd, Error> {
     let memfd = memfd_options.create(name)?;
     // Sets the memory to zeroes.

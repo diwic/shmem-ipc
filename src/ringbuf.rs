@@ -2,8 +2,8 @@
 //! There can be one producer and one consumer, but they can be in different threads
 //! i e, they are Send but not Clone.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::mem::size_of;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{cmp, ptr};
 
 /// Enumeration of errors possible in this library
@@ -22,7 +22,6 @@ pub enum Error {
     #[error("Callback wrote more items than available in the buffer")]
     CallbackWroteTooMuch,
 }
-
 
 #[derive(Copy, Clone)]
 struct Buf<T> {
@@ -64,30 +63,42 @@ pub fn channel_bufsize<T>(capacity: usize) -> usize { capacity * size_of::<T>() 
 /// In case the buffer is too small or too big.
 pub fn channel<T: zerocopy::AsBytes + zerocopy::FromBytes + Copy>(buffer: &mut [u8]) -> (Sender<T>, Receiver<T>) {
     let b = unsafe { Buf::attach(buffer.as_mut_ptr(), buffer.len(), true).unwrap() };
-    (Sender { buf: b, index: 0}, Receiver { buf: b, index: 0})
+    (Sender { buf: b, index: 0 }, Receiver { buf: b, index: 0 })
 }
 
 impl<T> Buf<T> {
     #[inline]
-    fn count(&self) -> &AtomicUsize { unsafe { &*self.count_ptr }}
+    fn count(&self) -> &AtomicUsize { unsafe { &*self.count_ptr } }
 
     #[inline]
     fn load_count(&self) -> Result<usize, Error> {
         let x = self.count().load(Ordering::Acquire);
-        if x > self.length { Err(Error::BufCorrupt) } else { Ok(x) }
+        if x > self.length {
+            Err(Error::BufCorrupt)
+        } else {
+            Ok(x)
+        }
     }
 
     unsafe fn attach(data: *mut u8, length: usize, init: bool) -> Result<Self, Error> {
         use Error::*;
-        if length < CACHE_LINE_SIZE + size_of::<T>() { Err(BufTooSmall)? }
-        if length >= isize::MAX as usize { Err(BufTooBig)? }
+        if length < CACHE_LINE_SIZE + size_of::<T>() {
+            Err(BufTooSmall)?
+        }
+        if length >= isize::MAX as usize {
+            Err(BufTooBig)?
+        }
         let r = Self {
             count_ptr: data as *mut _ as *const AtomicUsize,
             data: data.offset(CACHE_LINE_SIZE as isize) as _,
             length: (length - CACHE_LINE_SIZE) / size_of::<T>(),
         };
-        if (r.count_ptr as usize) % std::mem::align_of::<AtomicUsize>() != 0 { Err(BufUnaligned)? }
-        if (r.data as usize) % std::mem::align_of::<T>() != 0 { Err(BufUnaligned)? }
+        if (r.count_ptr as usize) % std::mem::align_of::<AtomicUsize>() != 0 {
+            Err(BufUnaligned)?
+        }
+        if (r.data as usize) % std::mem::align_of::<T>() != 0 {
+            Err(BufUnaligned)?
+        }
         if init {
             r.count().store(0, Ordering::Release);
         } else {
@@ -98,7 +109,6 @@ impl<T> Buf<T> {
 }
 
 impl<T: zerocopy::AsBytes + Copy> Sender<T> {
-
     /// Assume a ringbuf is set up at the location.
     ///
     /// A buffer where the first 64 bytes are zero is okay.
@@ -125,23 +135,22 @@ impl<T: zerocopy::AsBytes + Copy> Sender<T> {
         let l = self.buf.length;
 
         let n = {
-             let end = self.index + cmp::min(l - self.index, l - cb);
-             let slice_start = unsafe { self.buf.data.offset(self.index as isize) };
-             let slice_len = end - self.index;
+            let end = self.index + cmp::min(l - self.index, l - cb);
+            let slice_start = unsafe { self.buf.data.offset(self.index as isize) };
+            let slice_len = end - self.index;
 
-             let n = if slice_len == 0 { 0 } else { f(slice_start, slice_len) };
-             if n > slice_len { Err(Error::CallbackWroteTooMuch)? }
-             assert!(n <= slice_len);
-             n
+            let n = if slice_len == 0 { 0 } else { f(slice_start, slice_len) };
+            if n > slice_len {
+                Err(Error::CallbackWroteTooMuch)?
+            }
+            assert!(n <= slice_len);
+            n
         };
 
         let c = self.buf.count().fetch_add(n, Ordering::AcqRel);
         self.index = (self.index + n) % l;
         // dbg!("Send: cb = {}, c = {}, l = {}, n = {}", cb, c, l, n);
-        Ok(Status {
-            remaining: l - c - n,
-            signal: c == 0 && n > 0
-        })
+        Ok(Status { remaining: l - c - n, signal: c == 0 && n > 0 })
     }
 
     /// "Safe" version of send. Will call your closure up to "count" times
@@ -152,16 +161,20 @@ impl<T: zerocopy::AsBytes + Copy> Sender<T> {
     /// Panics in case the buffer is corrupt.
     pub fn send_foreach<F: FnMut() -> T>(&mut self, mut count: usize, mut f: F) -> Status {
         loop {
-            let status = self.send(|p, c| {
-                let mut j = 0;
-                while j < c && count > 0 {
-                    unsafe { ptr::write(p.offset(j as isize), f()) };
-                    j += 1;
-                    count -= 1;
-                };
-                j
-            }).unwrap();
-            if status.remaining == 0 || count == 0 { return status; }
+            let status = self
+                .send(|p, c| {
+                    let mut j = 0;
+                    while j < c && count > 0 {
+                        unsafe { ptr::write(p.offset(j as isize), f()) };
+                        j += 1;
+                        count -= 1;
+                    }
+                    j
+                })
+                .unwrap();
+            if status.remaining == 0 || count == 0 {
+                return status;
+            }
         }
     }
 
@@ -185,17 +198,16 @@ impl<T: zerocopy::FromBytes + Copy> Receiver<T> {
             let data_len = cmp::min(self.index + cb, l) - self.index;
 
             let n = if data_len == 0 { 0 } else { f(data_start, data_len) };
-            if n > data_len { Err(Error::CallbackReadTooMuch)? }
+            if n > data_len {
+                Err(Error::CallbackReadTooMuch)?
+            }
             n
         };
 
         let c = self.buf.count().fetch_sub(n, Ordering::AcqRel);
         self.index = (self.index + n) % l;
         // dbg!("Recv: cb = {}, c = {}, l = {}, n = {}", cb, c, l, n);
-        return Ok(Status {
-            remaining: c - n,
-            signal: c >= l && n > 0,
-        })
+        return Ok(Status { remaining: c - n, signal: c >= l && n > 0 });
     }
 
     /// "Safe" version of recv. Will call your closure up to "count" times
@@ -206,19 +218,22 @@ impl<T: zerocopy::FromBytes + Copy> Receiver<T> {
     /// Panics in case the buffer is corrupt.
     pub fn recv_foreach<F: FnMut(T)>(&mut self, mut count: usize, mut f: F) -> Status {
         loop {
-            let status = self.recv(|p, c| {
-                let mut j = 0;
-                while j < c && count > 0 {
-                    f(unsafe { ptr::read(p.offset(j as isize)) });
-                    count -= 1;
-                    j += 1;
-                };
-                j
-            }).unwrap();
-            if status.remaining == 0 || count == 0 { return status; }
+            let status = self
+                .recv(|p, c| {
+                    let mut j = 0;
+                    while j < c && count > 0 {
+                        f(unsafe { ptr::read(p.offset(j as isize)) });
+                        count -= 1;
+                        j += 1;
+                    }
+                    j
+                })
+                .unwrap();
+            if status.remaining == 0 || count == 0 {
+                return status;
+            }
         }
     }
-
 
     /// Returns number of items that can be read
     pub fn read_count(&self) -> Result<usize, Error> { self.buf.load_count() }
@@ -243,44 +258,54 @@ mod tests {
         let mut v = vec![10; 100];
         let (mut s, mut r) = super::channel(&mut v);
         // is it empty?
-        r.recv(|_,_| panic!()).unwrap();
+        r.recv(|_, _| panic!()).unwrap();
         s.send(|d, l| {
             assert!(l > 0);
             unsafe { *d = 5u16 };
             1
-        }).unwrap();
+        })
+        .unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 1);
             assert_eq!(unsafe { *d }, 5);
             0
-        }).unwrap();
+        })
+        .unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 1);
             assert_eq!(unsafe { *d }, 5);
             1
-        }).unwrap();
+        })
+        .unwrap();
         r.recv(|_, _| panic!()).unwrap();
 
         let mut i = 6;
-        s.send_foreach(2, || { i += 1; i } );
+        s.send_foreach(2, || {
+            i += 1;
+            i
+        });
         r.recv(|d, l| {
             assert_eq!(l, 2);
             let x = unsafe { std::ptr::read(d as *const [u16; 2]) };
             assert_eq!(x, [7, 8]);
             2
-        }).unwrap();
+        })
+        .unwrap();
     }
 
     #[test]
     fn full_buf_test() {
-        assert_eq!(super::channel_bufsize::<u16>(3), 64+3*2);
+        assert_eq!(super::channel_bufsize::<u16>(3), 64 + 3 * 2);
         let mut q: Vec<u8> = vec![66; super::channel_bufsize::<u16>(3)];
         let (mut s, mut r): (super::Sender<u16>, super::Receiver<u16>) = super::channel(&mut q);
         s.send(|dd, l| {
             assert_eq!(l, 3);
-            unsafe { std::ptr::write(dd as *mut [u16; 3], [5, 8, 9]); }
+            unsafe {
+                std::ptr::write(dd as *mut [u16; 3], [5, 8, 9]);
+            }
             2
-        }).unwrap();
+        })
+        .unwrap();
         let mut called = false;
         s.send_foreach(2, || {
             assert_eq!(called, false);
@@ -291,24 +316,28 @@ mod tests {
         r.recv(|_, l| {
             assert_eq!(l, 3);
             0
-        }).unwrap();
+        })
+        .unwrap();
         s.send(|_, _| panic!()).unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 3);
             assert_eq!([5, 8, 10], unsafe { std::ptr::read(d as *const [u16; 3]) });
             1
-        }).unwrap();
+        })
+        .unwrap();
         s.send(|d, l| {
             assert_eq!(l, 1);
             unsafe { *d = 1 };
             1
-        }).unwrap();
+        })
+        .unwrap();
         s.send(|_, _| panic!()).unwrap();
         r.recv(|d, l| {
             assert_eq!(l, 2);
             assert_eq!([8, 10], unsafe { std::ptr::read(d as *const [u16; 2]) });
             2
-        }).unwrap();
+        })
+        .unwrap();
         let mut called = false;
         r.recv_foreach(56, |d| {
             assert_eq!(called, false);
