@@ -17,14 +17,13 @@ pub mod ringbuf;
 
 pub mod sharedring;
 
-
 /// Enumeration of errors possible in this library
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Memfd errors")]
+    #[error("Memfd errors {0:?}")]
     Memfd(#[from] mem::mfd::Error),
-    #[error("OS errors")]
+    #[error("OS errors {0:?}")]
     Io(#[from] std::io::Error),
-    #[error("Ringbuffer errors")]
-    Ringbuf(#[from] ringbuf::Error)
+    #[error("Ringbuffer errors {0:?}")]
+    Ringbuf(#[from] ringbuf::Error),
 }
